@@ -67,6 +67,7 @@ void describe('/file-upload', () => {
         .post('/file-upload')
         .attach('file', file)
       assert.equal(res.status, 410)
+      assert.ok(!res.text.includes('[extensions]'))
     })
 
     void it('POST file type XML with XXE attack against Linux', async () => {
@@ -75,31 +76,47 @@ void describe('/file-upload', () => {
         .post('/file-upload')
         .attach('file', file)
       assert.equal(res.status, 410)
+      assert.ok(!res.text.includes('root:'))
     })
 
-    void it('POST file type XML with Billion Laughs attack is caught by parser', async () => {
+    void it('POST file type XML with Billion Laughs attack is not expanded', async () => {
       const file = path.resolve(__dirname, '../files/xxeBillionLaughs.xml')
       const res = await request(app)
         .post('/file-upload')
         .attach('file', file)
       assert.equal(res.status, 410)
-      assert.ok(res.text.includes('Detected an entity reference loop'))
+      assert.ok(!res.text.includes('lololololol'))
+    })
+
+    void it('POST file type XML with internal entities does not expand them', async () => {
+      const file = Buffer.from('<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY a "DEAD"><!ENTITY b "BEEF">]><foo>&a;&b;</foo>')
+      const res = await request(app)
+        .post('/file-upload')
+        .attach('file', file, 'entities.xml')
+      assert.equal(res.status, 410)
+      assert.ok(!res.text.includes('DEADBEEF'))
     })
 
     void it('POST file type XML with Quadratic Blowup attack', async () => {
       const file = path.resolve(__dirname, '../files/xxeQuadraticBlowup.xml')
+      const started = Date.now()
       const res = await request(app)
         .post('/file-upload')
         .attach('file', file)
-      assert.ok(res.status >= 410)
+      assert.equal(res.status, 410)
+      assert.ok(Date.now() - started < 1900)
+      await request(app).get('/rest/admin/application-version').expect(200)
     })
 
     void it('POST file type XML with dev/random attack', async () => {
       const file = path.resolve(__dirname, '../files/xxeDevRandom.xml')
+      const started = Date.now()
       const res = await request(app)
         .post('/file-upload')
         .attach('file', file)
-      assert.ok(res.status >= 410)
+      assert.equal(res.status, 410)
+      assert.ok(Date.now() - started < 1900)
+      await request(app).get('/rest/admin/application-version').expect(200)
     })
   }
 
