@@ -4,14 +4,12 @@
  */
 
 import { type Request, type Response, type NextFunction } from 'express'
-import * as challengeUtils from '../lib/challengeUtils'
-import { challenges } from '../data/datacache'
 import { UserModel } from '../models/user'
 import * as security from '../lib/insecurity'
 
 export function changePassword () {
   return async ({ query, headers, connection }: Request, res: Response, next: NextFunction) => {
-    const currentPassword = query.current as string
+    const currentPassword = query.current
     const newPassword = query.new as string
     const newPasswordInString = newPassword?.toString()
     const repeatPassword = query.repeat
@@ -36,7 +34,7 @@ export function changePassword () {
       return
     }
 
-    if (currentPassword && security.hash(currentPassword) !== loggedInUser.data.password) {
+    if (typeof currentPassword !== 'string' || currentPassword.length === 0) {
       res.status(401).send(res.__('Current password is not correct.'))
       return
     }
@@ -48,11 +46,17 @@ export function changePassword () {
         return
       }
 
+      if (security.hash(currentPassword) !== user.password) {
+        res.status(401).send(res.__('Current password is not correct.'))
+        return
+      }
+
       await user.update({ password: newPasswordInString })
-      challengeUtils.solveIf(
-        challenges.changePasswordBenderChallenge,
-        () => user.id === 3 && !currentPassword && user.password === security.hash('slurmCl4ssic')
-      )
+      for (const activeUser of Object.values(security.authenticatedUsers.tokenMap)) {
+        if (activeUser.data.id === user.id) {
+          activeUser.data.setDataValue('password', user.password)
+        }
+      }
       res.json({ user })
     } catch (error) {
       next(error)

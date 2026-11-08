@@ -8,6 +8,7 @@ import assert from 'node:assert/strict'
 import request from 'supertest'
 import type { Express } from 'express'
 import config from 'config'
+import * as security from '../../lib/insecurity'
 import { createTestApp } from './helpers/setup'
 import { login } from './helpers/auth'
 
@@ -36,6 +37,36 @@ void describe('/rest/user/change-password', () => {
       .set({ Authorization: 'Bearer ' + token })
 
     assert.equal(res.status, 200)
+    assert.equal(security.authenticatedUsers.get(token)?.data.password, security.hash('foo'))
+
+    const staleTwoFactor = await request(app)
+      .post('/rest/2fa/disable')
+      .set({ Authorization: 'Bearer ' + token })
+      .send({ password: 'kunigunde' })
+    assert.equal(staleTwoFactor.status, 401)
+
+    const currentTwoFactor = await request(app)
+      .post('/rest/2fa/disable')
+      .set({ Authorization: 'Bearer ' + token })
+      .send({ password: 'foo' })
+    assert.equal(currentTwoFactor.status, 200)
+
+    const second = await request(app)
+      .get('/rest/user/change-password?current=foo&new=bar&repeat=bar')
+      .set({ Authorization: 'Bearer ' + token })
+    assert.equal(second.status, 200)
+
+    const staleSecondFactor = await request(app)
+      .post('/rest/2fa/disable')
+      .set({ Authorization: 'Bearer ' + token })
+      .send({ password: 'foo' })
+    assert.equal(staleSecondFactor.status, 401)
+
+    const latestSecondFactor = await request(app)
+      .post('/rest/2fa/disable')
+      .set({ Authorization: 'Bearer ' + token })
+      .send({ password: 'bar' })
+    assert.equal(latestSecondFactor.status, 200)
   })
 
   void it('GET password change with passing wrong current password', async () => {
@@ -89,7 +120,7 @@ void describe('/rest/user/change-password', () => {
     assert.ok(res.text.includes('Error: Blocked illegal activity'))
   })
 
-  void it('GET password change for Bender without current password using GET request', async () => {
+  void it('GET rejects a password change for Bender without the current password', async () => {
     const { token } = await login(app, {
       email: 'bender@' + config.get<string>('application.domain'),
       password: 'OhG0dPlease1nsertLiquor!'
@@ -99,7 +130,8 @@ void describe('/rest/user/change-password', () => {
       .get('/rest/user/change-password?new=slurmCl4ssic&repeat=slurmCl4ssic')
       .set({ Authorization: 'Bearer ' + token })
 
-    assert.equal(res.status, 200)
+    assert.equal(res.status, 401)
+    assert.ok(res.text.includes('Current password is not correct'))
   })
 })
 
