@@ -7,10 +7,8 @@ import { describe, it, before } from 'node:test'
 import assert from 'node:assert/strict'
 import request from 'supertest'
 import type { Express } from 'express'
-import config from 'config'
 import { createTestApp } from './helpers/setup'
 import { login } from './helpers/auth'
-import { type Product } from '../../data/types'
 import * as security from '../../lib/insecurity'
 
 let app: Express
@@ -34,15 +32,14 @@ void describe('/rest/products/:id/reviews', () => {
     assert.equal(typeof review.author, 'string')
   })
 
-  void it('GET product reviews attack by injecting a mongoDB sleep command', async () => {
+  void it('GET product reviews rejects a non-numeric product id', async () => {
     const res = await request(app)
       .get('/rest/products/sleep(1)/reviews')
-    assert.equal(res.status, 200)
+    assert.equal(res.status, 400)
     assert.ok(res.headers['content-type']?.includes('application/json'))
   })
 
-  // FIXME Turn on when #1960 is resolved
-  void it.skip('GET product reviews by alphanumeric non-mongoDB-command product id', async () => {
+  void it('GET product reviews rejects an alphanumeric product id', async () => {
     const res = await request(app)
       .get('/rest/products/kaboom/reviews')
     assert.equal(res.status, 400)
@@ -57,6 +54,19 @@ void describe('/rest/products/:id/reviews', () => {
       })
     assert.equal(res.status, 201)
     assert.ok(res.headers['content-type']?.includes('application/json'))
+    const reviews = await request(app).get('/rest/products/1/reviews')
+    assert.equal(reviews.status, 200)
+    assert.ok(reviews.body.data.some((review: { message: string }) => review.message === 'Lorem Ipsum'))
+  })
+
+  void it('GET returns a review created with an alternate numeric product id', async () => {
+    const created = await request(app)
+      .put('/rest/products/01/reviews')
+      .send({ message: 'Alternate numeric id', author: 'Anonymous' })
+    assert.equal(created.status, 201)
+    const reviews = await request(app).get('/rest/products/01/reviews')
+    assert.equal(reviews.status, 200)
+    assert.ok(reviews.body.data.some((review: { message: string }) => review.message === 'Alternate numeric id'))
   })
 })
 
@@ -123,9 +133,9 @@ void describe('/rest/products/reviews', () => {
     assert.equal(res.status, 200)
   })
 
-  void it('PATCH multiple product review via injection', async () => {
-    const totalReviews = config.get<Product[]>('products').reduce((sum: number, { reviews = [] }: any) => sum + reviews.length, 1)
-
+  void it('PATCH rejects an operator as the review id', async () => {
+    const before = await request(app).get('/rest/products/1/reviews')
+    const original = before.body.data.find((review: { _id: string }) => review._id === reviewId)
     const res = await request(app)
       .patch('/rest/products/reviews')
       .set(authHeader)
@@ -133,11 +143,10 @@ void describe('/rest/products/reviews', () => {
         id: { $ne: -1 },
         message: 'trololololololololololololololololololololololololololol'
       })
-    assert.equal(res.status, 200)
+    assert.equal(res.status, 400)
     assert.ok(res.headers['content-type']?.includes('application/json'))
-    assert.equal(typeof res.body.modified, 'number')
-    assert.ok(Array.isArray(res.body.original))
-    assert.ok(Array.isArray(res.body.updated))
-    assert.equal(res.body.modified, totalReviews)
+    const after = await request(app).get('/rest/products/1/reviews')
+    const current = after.body.data.find((review: { _id: string }) => review._id === reviewId)
+    assert.equal(current.message, original.message)
   })
 })
