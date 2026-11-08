@@ -44,4 +44,12 @@ void describe('/rest/track-order/:id', () => {
       assert.equal(typeof item._id, 'string')
     }
   })
+
+  void it('GET escapes an unsafe reflected order id', async () => {
+    const res = await request(app)
+      .get('/rest/track-order/%3Ciframe%20src%3D%22javascript%3Aalert(1)%22%3E')
+    assert.equal(res.status, 200)
+    assert.ok(!res.body.data[0].orderId.includes('<iframe'))
+    assert.ok(!res.body.data[0].orderId.includes('javascript:'))
+  })
 })

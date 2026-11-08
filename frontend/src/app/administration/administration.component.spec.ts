@@ -91,6 +91,16 @@ describe('AdministrationComponent', () => {
         expect(component.userDataSource.data[1].email.toString()).toContain('User2')
     })
 
+    it('should render an older unsafe email as text', () => {
+        userService.find.mockReturnValue(of([{ email: '<img src=x onerror=alert(1)>' }]))
+        component.findAllUsers()
+        fixture.detectChanges()
+        const root = fixture.nativeElement as HTMLElement
+        const cells = Array.from(root.querySelectorAll<HTMLElement>('mat-cell.mat-column-email'))
+        expect(cells.some(cell => cell.textContent?.includes('<img src=x'))).toBe(true)
+        expect(cells.some(cell => cell.querySelector('img') !== null)).toBe(false)
+    })
+
     it('should give an error if UserService fails to find all users', () => {
         vi.spyOn(console, 'log').mockImplementation(() => {})
         userService.find.mockReturnValue(throwError('Error'))
@@ -104,6 +114,13 @@ describe('AdministrationComponent', () => {
         expect(component.feedbackDataSource.data.length).toBe(2)
         expect(component.feedbackDataSource.data[0].comment.toString()).toContain('Feedback1')
         expect(component.feedbackDataSource.data[1].comment.toString()).toContain('Feedback2')
+    })
+
+    it('should sanitize an older unsafe feedback comment at rendering', () => {
+        feedbackService.find.mockReturnValue(of([{ comment: '<iframe src="javascript:alert(1)"></iframe>' }]))
+        component.findAllFeedbacks()
+        fixture.detectChanges()
+        expect(fixture.nativeElement.querySelector('.mat-column-comment iframe')).toBeNull()
     })
 
     it('should give an error if FeedbackService fails to find all feedbacks', () => {
