@@ -4,6 +4,7 @@
  */
 
 /* jslint node: true */
+import { randomBytes } from 'node:crypto'
 import { AddressModel } from '../models/address'
 import { BasketModel } from '../models/basket'
 import { BasketItemModel } from '../models/basketitem'
@@ -184,6 +185,11 @@ async function createChallenges () {
 
 async function createUsers () {
   const users = await loadStaticUserData()
+  const configuredRecoveryAnswer = process.env.BJOERN_OWASP_RECOVERY_ANSWER
+  if (configuredRecoveryAnswer != null && configuredRecoveryAnswer.length > 0 && (configuredRecoveryAnswer.length < 24 || configuredRecoveryAnswer.length > 256)) {
+    throw new Error('BJOERN_OWASP_RECOVERY_ANSWER must contain 24 to 256 characters')
+  }
+  const bjoernOwaspRecoveryAnswer = configuredRecoveryAnswer || randomBytes(32).toString('base64url')
 
   await Promise.all(
     users.map(async ({ username, email, password, customDomain, key, role, deletedFlag, profileImage, securityQuestion, feedback, address, card, totpSecret, lastLoginIp = '' }) => {
@@ -200,13 +206,19 @@ async function createUsers () {
           lastLoginIp
         })
         datacache.users[key] = user
-        if (securityQuestion != null) await createSecurityAnswer(user.id, securityQuestion.id, securityQuestion.answer)
+        if (securityQuestion != null) {
+          const answer = key === 'bjoernOwasp' ? bjoernOwaspRecoveryAnswer : securityQuestion.answer
+          if (answer == null) throw new Error(`Missing security answer for ${key}`)
+          const savedAnswer = await createSecurityAnswer(user.id, securityQuestion.id, answer)
+          if (key === 'bjoernOwasp' && savedAnswer == null) throw new Error('Could not rotate OWASP account recovery answer')
+        }
         if (feedback != null) await createFeedback(user.id, feedback.comment, feedback.rating, user.email)
         if (deletedFlag) await deleteUser(user.id)
         if (address != null) await createAddresses(user.id, address)
         if (card != null) await createCards(user.id, card)
       } catch (err) {
         logger.error(`Could not insert User ${key}: ${utils.getErrorMessage(err)}`)
+        if (key === 'bjoernOwasp') throw err
       }
     })
   )
@@ -688,7 +700,7 @@ async function createSecurityQuestions () {
 
 async function createSecurityAnswer (UserId: number, SecurityQuestionId: number, answer: string) {
   return await SecurityAnswerModel.create({ SecurityQuestionId, UserId, answer }).catch((err: unknown) => {
-    logger.error(`Could not insert SecurityAnswer ${answer} mapped to UserId ${UserId}: ${utils.getErrorMessage(err)}`)
+    logger.error(`Could not insert SecurityAnswer for UserId ${UserId}: ${utils.getErrorMessage(err)}`)
   })
 }
 

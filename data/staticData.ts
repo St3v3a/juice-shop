@@ -31,7 +31,7 @@ export interface StaticUser {
 }
 export interface StaticUserSecurityQuestion {
   id: number
-  answer: string
+  answer?: string
 }
 export interface StaticUserFeedback {
   comment: string
