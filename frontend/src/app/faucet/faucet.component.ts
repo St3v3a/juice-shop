@@ -2,6 +2,7 @@ import { Component, ChangeDetectorRef, inject, OnInit } from '@angular/core'
 import { KeysService } from '../Services/keys.service'
 import { SnackBarHelperService } from '../Services/snack-bar-helper.service'
 import { TranslateService, TranslateModule } from '@ngx-translate/core'
+import { jwtDecode } from 'jwt-decode'
 import {
   BeeFaucetABI,
   BeeTokenABI,
@@ -56,6 +57,7 @@ export class FaucetComponent implements OnInit {
   successResponse = false
   mintButtonDisabled = true
   challengeSolved = false
+  listenerReady = false
   nftMintText = 'Mint the Pot - 1000 BEE'
   errorMessage = ''
   metamaskAddress = ''
@@ -75,6 +77,7 @@ export class FaucetComponent implements OnInit {
       next:
       (response) => {
         console.log(response)
+        this.listenerReady = response?.success === true
       },
       error: (error) => {
         console.error(error)
@@ -249,12 +252,25 @@ export class FaucetComponent implements OnInit {
       this.snackBarHelperService.open('PLEASE_CONNECT_WEB3_WALLET', 'errorBar')
       return
     }
+    if (!this.listenerReady) {
+      this.errorMessage = 'Minting is preparing. Please try again shortly.'
+      return
+    }
     this.translateService.get('NFT_MINT_TEXT_AWAITING_APPROVAL').subscribe((translatedString: string) => {
       this.nftMintText = translatedString
     })
     try {
       const provider = new ethers.providers.Web3Provider(window.ethereum)
       const signer = provider.getSigner()
+      const token = localStorage.getItem('token')
+      const userId = token ? jwtDecode<{ data?: { id?: number } }>(token).data?.id : undefined
+      if (!userId) {
+        this.errorMessage = 'Please sign in again before minting.'
+        return
+      }
+      const walletAddress = await signer.getAddress()
+      const signature = await signer.signMessage(`Juice Shop NFT mint for ${userId}`)
+      this.metamaskAddress = walletAddress
       const amountToApprove = ethers.utils.parseUnits('1000', '18')
       const BeeTokenContract = new ethers.Contract(
         BeeTokenAddress,
@@ -286,7 +302,7 @@ export class FaucetComponent implements OnInit {
           this.nftMintText = translatedString
         })
         setTimeout(() => {
-          this.keysService.verifyNFTWallet(this.metamaskAddress).subscribe({
+          this.keysService.verifyNFTWallet(walletAddress, signature).subscribe({
             next:
             (response) => {
               if (response.success) {

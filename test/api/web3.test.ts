@@ -8,18 +8,25 @@ import assert from 'node:assert/strict'
 import request from 'supertest'
 import type { Express } from 'express'
 import { createTestApp } from './helpers/setup'
+import { login } from './helpers/auth'
+import { HDNodeWallet, Wallet } from 'ethers'
 
 let app: Express
+let authHeader: { Authorization: string }
 
 const skipReason = process.env.ALCHEMY_API_KEY ? undefined : 'ALCHEMY_API_KEY not set'
+const walletSkipReason = process.env.ALCHEMY_API_KEY && process.env.NFT_WALLET_MNEMONIC ? undefined : 'Web3 wallet not configured'
+const wallet = process.env.NFT_WALLET_MNEMONIC ? HDNodeWallet.fromPhrase(process.env.NFT_WALLET_MNEMONIC) : undefined
 
 before(async () => {
   if (!process.env.ALCHEMY_API_KEY) return
   const result = await createTestApp()
   app = result.app
+  const { token } = await login(app, { email: 'admin@juice-sh.op', password: 'admin123' })
+  authHeader = { Authorization: `Bearer ${token}` }
 }, { timeout: 60000 })
 
-void describe('/submitKey', { skip: skipReason }, () => {
+void describe('/submitKey', { skip: walletSkipReason }, () => {
   void it('POST missing key in request body gets rejected as non-Ethereum key', async () => {
     const res = await request(app)
       .post('/rest/web3/submitKey')
@@ -45,7 +52,7 @@ void describe('/submitKey', { skip: skipReason }, () => {
   void it('POST public wallet key in request body gets rejected as such', async () => {
     const res = await request(app)
       .post('/rest/web3/submitKey')
-      .send({ privateKey: '0x02c7a2a93289c9fbda5990bac6596993e9bb0a8d3f178175a80b7cfd983983f506' })
+      .send({ privateKey: wallet!.publicKey })
 
     assert.equal(res.status, 401)
     assert.ok(res.headers['content-type']?.includes('application/json'))
@@ -56,7 +63,7 @@ void describe('/submitKey', { skip: skipReason }, () => {
   void it('POST wallet address in request body gets rejected as such', async () => {
     const res = await request(app)
       .post('/rest/web3/submitKey')
-      .send({ privateKey: '0x8343d2eb2B13A2495De435a1b15e85b98115Ce05' })
+      .send({ privateKey: wallet!.address })
 
     assert.equal(res.status, 401)
     assert.ok(res.headers['content-type']?.includes('application/json'))
@@ -67,7 +74,7 @@ void describe('/submitKey', { skip: skipReason }, () => {
   void it('POST private key in request body gets accepted', async () => {
     const res = await request(app)
       .post('/rest/web3/submitKey')
-      .send({ privateKey: '0x5bcc3e9d38baa06e7bfaab80ae5957bbe8ef059e640311d7d6d465e6bc948e3e' })
+      .send({ privateKey: wallet!.privateKey })
 
     assert.equal(res.status, 200)
     assert.ok(res.headers['content-type']?.includes('application/json'))
@@ -91,6 +98,7 @@ void describe('/nftMintListen', { skip: skipReason }, () => {
   void it('GET call confirms registration of event listener', async () => {
     const res = await request(app)
       .get('/rest/web3/nftMintListen')
+      .set(authHeader)
 
     assert.equal(res.status, 200)
     assert.ok(res.headers['content-type']?.includes('application/json'))
@@ -100,26 +108,37 @@ void describe('/nftMintListen', { skip: skipReason }, () => {
 })
 
 void describe('/walletNFTVerify', { skip: skipReason }, () => {
-  void it('POST missing wallet address fails to solve minting challenge', async () => {
+  void it('POST missing wallet proof is rejected', async () => {
     const res = await request(app)
       .post('/rest/web3/walletNFTVerify')
+      .set(authHeader)
       .send({})
 
-    assert.equal(res.status, 200)
-    assert.ok(res.headers['content-type']?.includes('application/json'))
-    assert.equal(res.body.success, false)
-    assert.equal(res.body.message, 'Wallet did not mint the NFT')
+    assert.equal(res.status, 400)
+    assert.equal(res.body.message, 'Wallet proof required')
   })
 
-  void it('POST invalid wallet address fails to solve minting challenge', async () => {
+  void it('POST invalid wallet proof is rejected', async () => {
     const res = await request(app)
       .post('/rest/web3/walletNFTVerify')
-      .send({ walletAddress: 'lalalalala' })
+      .set(authHeader)
+      .send({ walletAddress: '0xdeadbeef', signature: 'invalid' })
+
+    assert.equal(res.status, 403)
+  })
+
+  void it('POST signed wallet without a mint does not solve challenge', async () => {
+    const wallet = Wallet.createRandom()
+    const token = authHeader.Authorization.split(' ')[1]
+    const id = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString()).data.id
+    const signature = await wallet.signMessage(`Juice Shop NFT mint for ${id}`)
+    const res = await request(app)
+      .post('/rest/web3/walletNFTVerify')
+      .set(authHeader)
+      .send({ walletAddress: wallet.address, signature })
 
     assert.equal(res.status, 200)
-    assert.ok(res.headers['content-type']?.includes('application/json'))
     assert.equal(res.body.success, false)
-    assert.equal(res.body.message, 'Wallet did not mint the NFT')
   })
 })
 

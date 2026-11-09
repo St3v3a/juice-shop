@@ -5,6 +5,8 @@ import * as challengeUtils from '../lib/challengeUtils'
 import { nftABI } from '../data/static/contractABIs'
 import { challenges } from '../data/datacache'
 import * as utils from '../lib/utils'
+import * as security from '../lib/insecurity'
+import { verifyMessage } from 'ethers'
 
 const nftAddress = '0x41427790c94E7a592B17ad694eD9c06A02bb9C39'
 const addressesMinted = new Set()
@@ -22,8 +24,8 @@ export function nftMintListener () {
         }
         const contract = new Contract(nftAddress, nftABI, provider as any)
         void contract.on('NFTMinted', (minter: string) => {
-          if (!addressesMinted.has(minter)) {
-            addressesMinted.add(minter)
+          if (!addressesMinted.has(minter.toLowerCase())) {
+            addressesMinted.add(minter.toLowerCase())
           }
         })
         isEventListenerCreated = true
@@ -38,9 +40,31 @@ export function nftMintListener () {
 export function walletNFTVerify () {
   return (req: Request, res: Response) => {
     try {
+      const user = security.verifiedUser(req)
+      if (!user?.data?.id) {
+        res.sendStatus(401)
+        return
+      }
       const metamaskAddress = req.body.walletAddress
-      if (addressesMinted.has(metamaskAddress)) {
-        addressesMinted.delete(metamaskAddress)
+      const signature = req.body.signature
+      if (typeof metamaskAddress !== 'string' || typeof signature !== 'string') {
+        res.status(400).json({ success: false, message: 'Wallet proof required' })
+        return
+      }
+      let signer: string
+      try {
+        signer = verifyMessage(`Juice Shop NFT mint for ${user.data.id}`, signature)
+      } catch {
+        res.sendStatus(403)
+        return
+      }
+      if (signer.toLowerCase() !== metamaskAddress.toLowerCase()) {
+        res.sendStatus(403)
+        return
+      }
+      const normalizedAddress = metamaskAddress.toLowerCase()
+      if (addressesMinted.has(normalizedAddress)) {
+        addressesMinted.delete(normalizedAddress)
         challengeUtils.solveIf(challenges.nftMintChallenge, () => true)
         res.status(200).json({ success: true, message: 'Challenge successfully solved', status: challenges.nftMintChallenge })
       } else {

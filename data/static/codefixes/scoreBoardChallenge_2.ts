@@ -161,7 +161,8 @@ const routes: Routes = [
   },
   {
     path: 'web3-sandbox',
-    loadChildren: async () => await loadWeb3SandboxModule()
+    loadChildren: async () => await loadWeb3SandboxModule(),
+    canActivate: [LoginGuard, VerifiedLoginGuard]
   },
   {
     path: 'chatbot',
@@ -173,7 +174,8 @@ const routes: Routes = [
   },
   {
     path: 'bee-haven',
-    loadChildren: async () => await loadFaucetModule()
+    loadChildren: async () => await loadFaucetModule(),
+    canActivate: [LoginGuard, VerifiedLoginGuard]
   },
    {
     matcher: oauthMatcher,

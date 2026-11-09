@@ -26,6 +26,11 @@ export const variableDependencies: Record<string, Dependency> = {
     dependency: 'Alchemy API Key',
     documentation: 'https://howto-web3.owasp-juice.shop',
     dependentChallenges: ['"Mint the Honey Pot" challenge', '"Wallet Depletion" challenge']
+  },
+  NFT_WALLET_MNEMONIC: {
+    dependency: 'NFT wallet mnemonic',
+    documentation: 'https://howto-web3.owasp-juice.shop',
+    dependentChallenges: ['"Nautical Mystery" challenge']
   }
 }
 
@@ -71,6 +76,7 @@ const validatePreconditions = async ({ exitOnFailure = true } = {}) => {
   const alchemyEnvVarExists = checkIfEnvironmentVariableExists('ALCHEMY_API_KEY')
   preconditionResults['https://www.alchemy.com/'] = alchemyDomainReachable
   preconditionResults.ALCHEMY_API_KEY = alchemyEnvVarExists
+  preconditionResults.NFT_WALLET_MNEMONIC = checkIfEnvironmentVariableExists('NFT_WALLET_MNEMONIC')
   if (!alchemyDomainReachable || !alchemyEnvVarExists) {
     logger.info(`Check ${colors.bold('https://howto-web3.owasp-juice.shop')} for instructions on how to set up and configure the Alchemy API`)
   }

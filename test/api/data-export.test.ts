@@ -11,6 +11,8 @@ import config from 'config'
 import path from 'node:path'
 import { createTestApp } from './helpers/setup'
 import { login } from './helpers/auth'
+import { ImageCaptchaModel } from '../../models/imageCaptcha'
+import * as security from '../../lib/insecurity'
 
 let app: Express
 
@@ -19,8 +21,23 @@ before(async () => {
   app = result.app
 }, { timeout: 60000 })
 
+async function latestCaptchaAnswer (token: string) {
+  const userId = security.authenticatedUsers.get(token)?.data?.id
+  assert.ok(userId)
+  const captcha = await ImageCaptchaModel.findOne({ where: { UserId: userId }, order: [['id', 'DESC']] })
+  assert.ok(captcha)
+  return captcha.answer
+}
+
+async function requestCaptcha (token: string) {
+  const res = await request(app).get('/rest/image-captcha').set({ Authorization: 'Bearer ' + token })
+  assert.equal(res.status, 200)
+  assert.equal(res.body.answer, undefined)
+  return latestCaptchaAnswer(token)
+}
+
 void describe('/rest/user/data-export', () => {
-  void it('Export data without use of CAPTCHA', async () => {
+  void it('Reject data export without CAPTCHA', async () => {
     const { token } = await login(app, { email: 'bjoern.kimminich@gmail.com', password: 'bW9jLmxpYW1nQGhjaW5pbW1pay5ucmVvamI=' })
     const authHeader = { Authorization: 'Bearer ' + token, 'content-type': 'application/json' }
 
@@ -29,12 +46,7 @@ void describe('/rest/user/data-export', () => {
       .set(authHeader)
       .send({ format: '1' })
 
-    assert.equal(res.status, 200)
-    assert.ok(res.headers['content-type']?.includes('application/json'))
-    assert.equal(res.body.confirmation, 'Your data export will open in a new Browser window.')
-    const parsedData = JSON.parse(res.body.userData)
-    assert.equal(parsedData.username, 'bkimminich')
-    assert.equal(parsedData.email, 'bjoern.kimminich@gmail.com')
+    assert.equal(res.status, 401)
   })
 
   void it('Export data when CAPTCHA requested need right answer', async () => {
@@ -71,7 +83,7 @@ void describe('/rest/user/data-export', () => {
     const res = await request(app)
       .post('/rest/user/data-export')
       .set(authHeader)
-      .send({ answer: captchaRes.body.answer, format: 1 })
+      .send({ answer: await latestCaptchaAnswer(token), format: 1 })
 
     assert.equal(res.status, 200)
     assert.ok(res.headers['content-type']?.includes('application/json'))
@@ -81,7 +93,17 @@ void describe('/rest/user/data-export', () => {
     assert.equal(parsedData.email, 'bjoern.kimminich@gmail.com')
   })
 
-  void it('Export data including orders without use of CAPTCHA', async () => {
+  void it('Rejects a reused CAPTCHA answer', async () => {
+    const { token } = await login(app, { email: 'bjoern.kimminich@gmail.com', password: 'bW9jLmxpYW1nQGhjaW5pbW1pay5ucmVvamI=' })
+    const authHeader = { Authorization: 'Bearer ' + token, 'content-type': 'application/json' }
+    const answer = await requestCaptcha(token)
+    const first = await request(app).post('/rest/user/data-export').set(authHeader).send({ answer, format: 1 })
+    const repeat = await request(app).post('/rest/user/data-export').set(authHeader).send({ answer, format: 1 })
+    assert.equal(first.status, 200)
+    assert.equal(repeat.status, 401)
+  })
+
+  void it('Export data including orders with CAPTCHA', async () => {
     const { token } = await login(app, { email: 'amy@' + config.get<string>('application.domain'), password: 'K1f.....................' })
     const authHeader = { Authorization: 'Bearer ' + token, 'content-type': 'application/json' }
 
@@ -89,10 +111,11 @@ void describe('/rest/user/data-export', () => {
       .post('/rest/basket/4/checkout')
       .set(authHeader)
 
+    const answer = await requestCaptcha(token)
     const res = await request(app)
       .post('/rest/user/data-export')
       .set(authHeader)
-      .send({ format: '1' })
+      .send({ answer, format: '1' })
 
     assert.equal(res.status, 200)
     assert.ok(res.headers['content-type']?.includes('application/json'))
@@ -109,14 +132,15 @@ void describe('/rest/user/data-export', () => {
     assert.equal(parsedData.orders[0].products[0].bonus, 0)
   })
 
-  void it('Export data including reviews without use of CAPTCHA', async () => {
+  void it('Export data including reviews with CAPTCHA', async () => {
     const { token } = await login(app, { email: 'jim@' + config.get<string>('application.domain'), password: 'ncc-1701' })
     const authHeader = { Authorization: 'Bearer ' + token, 'content-type': 'application/json' }
 
+    const answer = await requestCaptcha(token)
     const res = await request(app)
       .post('/rest/user/data-export')
       .set(authHeader)
-      .send({ format: '1' })
+      .send({ answer, format: '1' })
 
     assert.equal(res.status, 200)
     assert.ok(res.headers['content-type']?.includes('application/json'))
@@ -136,7 +160,7 @@ void describe('/rest/user/data-export', () => {
     assert.equal(parsedData.reviews[1].likedBy[0], undefined)
   })
 
-  void it('Export data including memories without use of CAPTCHA', async () => {
+  void it('Export data including memories with CAPTCHA', async () => {
     const { token } = await login(app, { email: 'jim@' + config.get<string>('application.domain'), password: 'ncc-1701' })
     const authHeader = { Authorization: 'Bearer ' + token, 'content-type': 'application/json' }
 
@@ -148,10 +172,11 @@ void describe('/rest/user/data-export', () => {
       .attach('image', file, 'Valid Image')
       .field('caption', 'Valid Image')
 
+    const answer = await requestCaptcha(token)
     const res = await request(app)
       .post('/rest/user/data-export')
       .set(authHeader)
-      .send({ format: '1' })
+      .send({ answer, format: '1' })
 
     assert.equal(res.status, 200)
     assert.ok(res.headers['content-type']?.includes('application/json'))
@@ -181,7 +206,7 @@ void describe('/rest/user/data-export', () => {
     const res = await request(app)
       .post('/rest/user/data-export')
       .set(authHeader)
-      .send({ answer: captchaRes.body.answer, format: 1 })
+      .send({ answer: await latestCaptchaAnswer(token), format: 1 })
 
     assert.equal(res.status, 200)
     assert.ok(res.headers['content-type']?.includes('application/json'))
@@ -212,7 +237,7 @@ void describe('/rest/user/data-export', () => {
     const res = await request(app)
       .post('/rest/user/data-export')
       .set(authHeader)
-      .send({ answer: captchaRes.body.answer, format: 1 })
+      .send({ answer: await latestCaptchaAnswer(token), format: 1 })
 
     assert.equal(res.status, 200)
     assert.ok(res.headers['content-type']?.includes('application/json'))
@@ -254,7 +279,7 @@ void describe('/rest/user/data-export', () => {
     const res = await request(app)
       .post('/rest/user/data-export')
       .set(authHeader)
-      .send({ answer: captchaRes.body.answer, format: 1 })
+      .send({ answer: await latestCaptchaAnswer(token), format: 1 })
 
     assert.equal(res.status, 200)
     assert.ok(res.headers['content-type']?.includes('application/json'))

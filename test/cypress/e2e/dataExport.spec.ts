@@ -20,13 +20,13 @@ describe('/#/privacy-security/data-export', () => {
       cy.get('#registerButton').click()
     })
 
-    it('should be possible to steal admin user data by causing email clash during export', () => {
+    it('requires a CAPTCHA before exporting data', () => {
       cy.login({ email: 'admun', password: 'admun123' })
 
       cy.visit('/#/privacy-security/data-export')
       cy.get('#formatControl').contains('JSON').click()
-      cy.get('#submitButton').click()
-      cy.expectChallengeSolved({ challenge: 'GDPR Data Theft' })
+      cy.get('.captcha-image').should('be.visible')
+      cy.get('#submitButton').should('be.disabled')
     })
   })
 })

@@ -9,27 +9,26 @@ describe('/redirect', () => {
   })
 
   describe('challenge "redirect"', () => {
-    it('should redirect to target URL if allowlisted URL is contained in it as parameter', () => {
+    it('should reject a target URL that contains an allowlisted URL only as a parameter', () => {
       cy.visit(
         '/redirect?to=https://owasp.org?trickIndexOf=https://github.com/juice-shop/juice-shop',
         {
           failOnStatusCode: false
         }
       )
-      cy.url().should('match', /https:\/\/owasp\.org/)
-      cy.expectChallengeSolved({ challenge: 'Allowlist Bypass' })
+      cy.contains('Unrecognized target URL for redirect:')
     })
   })
 
   describe('challenge "redirectCryptoCurrency"', () => {
-    it('should still redirect to forgotten entry https://etherscan.io/address/0x0f933ab9fcaaa782d0279c300d73750e1311eae6 on allowlist', () => {
+    it('should reject the deprecated Ethereum redirect', () => {
       cy.visit(
         '/redirect?to=https://etherscan.io/address/0x0f933ab9fcaaa782d0279c300d73750e1311eae6',
         {
           failOnStatusCode: false
         }
       )
-      cy.expectChallengeSolved({ challenge: 'Outdated Allowlist' })
+      cy.contains('Unrecognized target URL for redirect:')
     })
   })
 })

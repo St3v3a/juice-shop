@@ -229,6 +229,7 @@ function configureApp (app: ReturnType<typeof express>, seq: typeof sequelize) {
   app.use(antiCheat.checkForPreSolveInteractions())
 
   /* Checks for challenges solved by retrieving a file implicitly or explicitly */
+  app.use('/assets/public/images/padding', cookieParser('kekse'))
   app.use('/assets/public/images/padding', verify.accessControlChallenges())
   app.use('/assets/public/images/products', verify.accessControlChallenges())
   app.use('/assets/public/images/uploads', verify.accessControlChallenges())
@@ -639,8 +640,8 @@ function configureApp (app: ReturnType<typeof express>, seq: typeof sequelize) {
   /* Web3 API endpoints */
   app.post('/rest/web3/submitKey', utils.asyncHandler(checkKeys()))
   app.get('/rest/web3/nftUnlocked', nftUnlocked())
-  app.get('/rest/web3/nftMintListen', utils.asyncHandler(nftMintListener()))
-  app.post('/rest/web3/walletNFTVerify', walletNFTVerify())
+  app.get('/rest/web3/nftMintListen', security.isAuthorized(), utils.asyncHandler(nftMintListener()))
+  app.post('/rest/web3/walletNFTVerify', security.isAuthorized(), walletNFTVerify())
   app.post('/rest/web3/walletExploitAddress', utils.asyncHandler(contractExploitListener()))
 
   /* B2B Order API */

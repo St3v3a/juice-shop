@@ -52,6 +52,20 @@ export const cutOffPoisonNullByte = (str: string) => {
 }
 
 export const isAuthorized = () => expressJwt(({ secret: publicKey }) as any)
+export const verifiedUser = (req: Request): ResponseWithUser | undefined => {
+  const token = utils.jwtFrom(req) ?? req.cookies?.token
+  if (!token) return undefined
+  try {
+    if (jws.decode(token)?.header?.alg !== 'RS256') return undefined
+    let user: ResponseWithUser | undefined
+    jwt.verify(token, publicKey, (err: Error | null, decoded: any) => {
+      if (!err && decoded?.data) user = decoded as ResponseWithUser
+    })
+    return user
+  } catch {
+    return undefined
+  }
+}
 export const denyAll = () => expressJwt({ secret: '' + Math.random() } as any)
 export const authorize = (user = {}) => jwt.sign(user, privateKey, { expiresIn: '6h', algorithm: 'RS256' })
 export const verify = (token: string) => token ? (jws.verify as ((token: string, secret: string) => boolean))(token, publicKey) : false
@@ -123,9 +137,6 @@ function hasValidFormat (coupon: string) {
 // vuln-code-snippet start redirectCryptoCurrencyChallenge redirectChallenge
 export const redirectAllowlist = new Set([
   'https://github.com/juice-shop/juice-shop',
-  'https://blockchain.info/address/1AbKfgvw9psQ41NbLi8kufDQTezwG8DRZm', // vuln-code-snippet vuln-line redirectCryptoCurrencyChallenge
-  'https://explorer.dash.org/address/Xr556RzuwX6hg5EGpkybbv5RanJoZN17kW', // vuln-code-snippet vuln-line redirectCryptoCurrencyChallenge
-  'https://etherscan.io/address/0x0f933ab9fcaaa782d0279c300d73750e1311eae6', // vuln-code-snippet vuln-line redirectCryptoCurrencyChallenge
   'http://shop.spreadshirt.com/juiceshop',
   'http://shop.spreadshirt.de/juiceshop',
   'https://www.stickeryou.com/products/owasp-juice-shop/794',

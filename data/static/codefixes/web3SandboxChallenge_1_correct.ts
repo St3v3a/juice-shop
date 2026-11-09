@@ -169,7 +169,8 @@ const routes: Routes = [
   },
   {
     path: 'bee-haven',
-    loadChildren: async () => await loadFaucetModule()
+    loadChildren: async () => await loadFaucetModule(),
+    canActivate: [LoginGuard, VerifiedLoginGuard]
   },
    {
     matcher: oauthMatcher,
