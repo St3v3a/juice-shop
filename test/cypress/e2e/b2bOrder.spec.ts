@@ -1,63 +1,29 @@
-describe('/b2b/v2/order', () => {
-  describe('challenge "rce"', () => {
-    it('an infinite loop deserialization payload should not bring down the server', () => {
-      cy.task('isDocker').then((isDocker) => {
-        if (!isDocker) {
-          cy.login({ email: 'admin', password: 'admin123' })
-
-          cy.window().then(async () => {
-            const response = await fetch(
-              `${Cypress.config('baseUrl')}/b2b/v2/orders/`,
-              {
-                method: 'POST',
-                cache: 'no-cache',
-                headers: {
-                  'Content-type': 'application/json',
-                  Authorization: `Bearer ${localStorage.getItem('token')}`
-                },
-                body: JSON.stringify({
-                  orderLinesData: '(function dos() { while(true); })()'
-                })
-              }
-            )
-            if (response.status === 500) {
-              console.log('Success')
-            }
-          })
-          cy.expectChallengeSolved({ challenge: 'Blocked RCE DoS' })
-        }
-      })
-    })
+describe('/b2b/v2/orders', () => {
+  beforeEach(() => {
+    cy.login({ email: 'admin', password: 'admin123' })
   })
 
-  describe('challenge "rceOccupy"', () => {
-    it('should be possible to cause request timeout using a recursive regular expression payload', () => {
-      cy.task('isDocker').then((isDocker) => {
-        if (!isDocker) {
-          cy.login({ email: 'admin', password: 'admin123' })
-          cy.window().then(async () => {
-            const response = await fetch(
-              `${Cypress.config('baseUrl')}/b2b/v2/orders/`,
-              {
-                method: 'POST',
-                cache: 'no-cache',
-                headers: {
-                  'Content-type': 'application/json',
-                  Authorization: `Bearer ${localStorage.getItem('token')}`
-                },
-                body: JSON.stringify({
-                  orderLinesData:
-                    "/((a+)+)b/.test('aaaaaaaaaaaaaaaaaaaaaaaaaaaaa')"
-                })
-              }
-            )
-            if (response.status === 503) {
-              console.log('Success')
-            }
-          })
-          cy.expectChallengeSolved({ challenge: 'Successful RCE DoS' })
-        }
+  for (const [name, orderLinesData] of [
+    ['infinite-loop text', '(function dos() { while(true); })()'],
+    ['costly-regex text', "/((a+)+)b/.test('aaaaaaaaaaaaaaaaaaaaaaaaaaaaa')"],
+    ['sandbox-breakout text', 'this.constructor.constructor("return process")().exit()']
+  ] as const) {
+    it(`treats ${name} as inert order data`, () => {
+      cy.window().then((win) => {
+        const token = win.localStorage.getItem('token')
+        expect(token).not.to.equal(null)
+        cy.request({
+          method: 'POST',
+          url: '/b2b/v2/orders/',
+          headers: { Authorization: `Bearer ${token}` },
+          body: { cid: 'test-customer', orderLinesData }
+        }).then((response) => {
+          expect(response.status).to.equal(200)
+          expect(response.body.cid).to.equal('test-customer')
+          expect(response.body.orderNo).to.be.a('string')
+          expect(response.body.paymentDue).to.be.a('string')
+        })
       })
     })
-  })
+  }
 })
