@@ -37,7 +37,7 @@ import { OrderHistoryComponent } from './order-history/order-history.component'
 import { DeliveryMethodComponent } from './delivery-method/delivery-method.component'
 import { PhotoWallComponent } from './photo-wall/photo-wall.component'
 import { DeluxeUserComponent } from './deluxe-user/deluxe-user.component'
-import { AccountingGuard, AdminGuard, LoginGuard } from './app.guard'
+import { AccountingGuard, AdminGuard, LoginGuard, VerifiedLoginGuard } from './app.guard'
 import { NFTUnlockComponent } from './nft-unlock/nft-unlock.component'
 import { ScoreBoardComponent } from './score-board/score-board.component'
 import { ChatbotComponent } from './chatbot/chatbot.component'
@@ -259,7 +259,8 @@ const routes: Routes = [
   },
   { // vuln-code-snippet neutral-line tokenSaleChallenge
     matcher: tokenMatcher, // vuln-code-snippet vuln-line tokenSaleChallenge
-    component: TokenSaleComponent // vuln-code-snippet neutral-line tokenSaleChallenge
+    component: TokenSaleComponent, // vuln-code-snippet neutral-line tokenSaleChallenge
+    canActivate: [LoginGuard, VerifiedLoginGuard]
   }, // vuln-code-snippet neutral-line tokenSaleChallenge
   {
     path: 'coding-challenge/:challengeKey',

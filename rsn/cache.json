@@ -1237,29 +1237,33 @@
 	},
 	"tokenSaleChallenge_1.ts": {
 		"added": [
-			24
+			9,
+			25
 		],
 		"removed": [
-			24
+			23
 		]
 	},
 	"tokenSaleChallenge_2.ts": {
 		"added": [
-			24
+			9,
+			25
 		],
 		"removed": [
-			24
+			9,
+			25
 		]
 	},
 	"tokenSaleChallenge_3_correct.ts": {
 		"added": [
-			10,
-			24,
-			36,
+			9,
+			11,
+			25,
 			37,
-			44,
-			51,
-			59
+			38,
+			45,
+			52,
+			60
 		],
 		"removed": [
 			21

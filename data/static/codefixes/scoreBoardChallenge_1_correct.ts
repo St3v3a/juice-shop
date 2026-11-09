@@ -182,7 +182,8 @@ const routes: Routes = [
   },
   {
     matcher: tokenMatcher,
-    component: TokenSaleComponent
+    component: TokenSaleComponent,
+    canActivate: [LoginGuard, VerifiedLoginGuard]
   },
   {
     path: 'coding-challenge/:challengeKey',

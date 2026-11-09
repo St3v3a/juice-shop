@@ -116,6 +116,7 @@ import { createProductReviews } from './routes/createProductReviews'
 import { getWalletBalance, addWalletBalance } from './routes/wallet'
 import { retrieveAppConfiguration } from './routes/appConfiguration'
 import { updateProductReviews } from './routes/updateProductReviews'
+import { requireReviewOwner } from './routes/reviewAccess'
 import { servePrivacyPolicyProof } from './routes/privacyPolicyProof'
 import { profileImageUrlUpload } from './routes/profileImageUrlUpload'
 import { profileImageFileUpload } from './routes/profileImageFileUpload'
@@ -229,6 +230,7 @@ function configureApp (app: ReturnType<typeof express>, seq: typeof sequelize) {
   app.use(antiCheat.checkForPreSolveInteractions())
 
   /* Checks for challenges solved by retrieving a file implicitly or explicitly */
+  app.use('/assets/public/images/padding', cookieParser('kekse'))
   app.use('/assets/public/images/padding', verify.accessControlChallenges())
   app.use('/assets/public/images/products', verify.accessControlChallenges())
   app.use('/assets/public/images/uploads', verify.accessControlChallenges())
@@ -264,6 +266,7 @@ function configureApp (app: ReturnType<typeof express>, seq: typeof sequelize) {
     next()
   }
 
+  app.use('/support/logs', cookieParser('kekse'), security.isAdmin())
   // vuln-code-snippet start directoryListingChallenge accessLogDisclosureChallenge
   /* /ftp directory browsing and file download */ // vuln-code-snippet neutral-line directoryListingChallenge
   app.use('/ftp', serveIndexMiddleware, serveIndex('ftp', { icons: true })) // vuln-code-snippet vuln-line directoryListingChallenge
@@ -630,7 +633,7 @@ function configureApp (app: ReturnType<typeof express>, seq: typeof sequelize) {
   /* NoSQL API endpoints */
   app.get('/rest/products/:id/reviews', showProductReviews())
   app.put('/rest/products/:id/reviews', utils.asyncHandler(createProductReviews()))
-  app.patch('/rest/products/reviews', security.isAuthorized(), updateProductReviews())
+  app.patch('/rest/products/reviews', security.isAuthorized(), utils.asyncHandler(requireReviewOwner()), updateProductReviews())
   app.post('/rest/products/reviews', security.isAuthorized(), utils.asyncHandler(likeProductReviews()))
 
   /* Chat API endpoint */
@@ -641,7 +644,7 @@ function configureApp (app: ReturnType<typeof express>, seq: typeof sequelize) {
   app.get('/rest/web3/nftUnlocked', nftUnlocked())
   app.get('/rest/web3/nftMintListen', utils.asyncHandler(nftMintListener()))
   app.post('/rest/web3/walletNFTVerify', walletNFTVerify())
-  app.post('/rest/web3/walletExploitAddress', utils.asyncHandler(contractExploitListener()))
+  app.post('/rest/web3/walletExploitAddress', security.isAuthorized(), utils.asyncHandler(contractExploitListener()))
 
   /* B2B Order API */
   app.post('/b2b/v2/orders', b2bOrder())

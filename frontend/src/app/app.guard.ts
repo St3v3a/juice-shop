@@ -4,7 +4,10 @@
  */
 
 import { type CanActivate, Router } from '@angular/router'
+import { HttpClient } from '@angular/common/http'
 import { jwtDecode } from 'jwt-decode'
+import { catchError, map, of } from 'rxjs'
+import { environment } from '../environments/environment'
 import { roles } from './roles'
 import { Injectable, NgZone, inject } from '@angular/core'
 
@@ -41,6 +44,22 @@ export class LoginGuard implements CanActivate {
       }
     }
     return payload
+  }
+}
+
+@Injectable()
+export class VerifiedLoginGuard implements CanActivate {
+  private readonly http = inject(HttpClient)
+  private readonly loginGuard = inject(LoginGuard)
+
+  canActivate () {
+    return this.http.get(environment.hostServer + '/rest/user/authentication-details').pipe(
+      map(() => true),
+      catchError(() => {
+        this.loginGuard.forbidRoute('UNAUTHORIZED_ACCESS_ERROR')
+        return of(false)
+      })
+    )
   }
 }
 

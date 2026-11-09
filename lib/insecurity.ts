@@ -52,6 +52,30 @@ export const cutOffPoisonNullByte = (str: string) => {
 }
 
 export const isAuthorized = () => expressJwt(({ secret: publicKey }) as any)
+export const verifiedUser = (req: Request): ResponseWithUser | undefined => {
+  const token = utils.jwtFrom(req) ?? req.cookies?.token
+  if (!token) return undefined
+  try {
+    if (jws.decode(token)?.header?.alg !== 'RS256') return undefined
+    let user: ResponseWithUser | undefined
+    jwt.verify(token, publicKey, (err: Error | null, decoded: any) => {
+      if (!err && decoded?.data) user = decoded as ResponseWithUser
+    })
+    return user
+  } catch {
+    return undefined
+  }
+}
+export const isAdmin = () => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const user = verifiedUser(req)
+    if (user?.data?.role === roles.admin) {
+      next()
+    } else {
+      res.sendStatus(user ? 403 : 401)
+    }
+  }
+}
 export const denyAll = () => expressJwt({ secret: '' + Math.random() } as any)
 export const authorize = (user = {}) => jwt.sign(user, privateKey, { expiresIn: '6h', algorithm: 'RS256' })
 export const verify = (token: string) => token ? (jws.verify as ((token: string, secret: string) => boolean))(token, publicKey) : false
