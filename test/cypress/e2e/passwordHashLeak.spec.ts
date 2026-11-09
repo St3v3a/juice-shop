@@ -3,17 +3,19 @@ describe('challenge "Password Hash Leak"', () => {
     cy.login({ email: 'admin@juice-sh.op', password: 'admin123' })
   })
 
-  it('should solve the challenge by leaking the password hash via fields parameter', () => {
+  it('does not expose sensitive fields through the profile projection', () => {
     cy.request({
       method: 'GET',
-      url: '/rest/user/whoami?fields=id,email,password',
+      url: '/rest/user/whoami?fields=id,email,password,totpSecret,dataValues',
       headers: {
         // Cypress automatically handles cookies after cy.login
       }
     }).then((res) => {
-      expect(res.body.user.password).to.be.a('string')
-      expect(res.body.user.password.length).to.be.greaterThan(0)
-      cy.expectChallengeSolved({ challenge: 'Password Hash Leak' })
+      expect(res.body.user.id).to.be.a('number')
+      expect(res.body.user.email).to.be.a('string')
+      expect(res.body.user.password).to.be.undefined
+      expect(res.body.user.totpSecret).to.be.undefined
+      expect(res.body.user.dataValues).to.be.undefined
     })
   })
 })

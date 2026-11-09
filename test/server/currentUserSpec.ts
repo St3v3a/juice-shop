@@ -7,7 +7,7 @@ import sinon from 'sinon'
 import chai from 'chai'
 import sinonChai from 'sinon-chai'
 import { retrieveLoggedInUser } from '../../routes/currentUser'
-import { authenticatedUsers } from '../../lib/insecurity'
+import { authenticatedUsers, authorize } from '../../lib/insecurity'
 import type { UserModel } from 'models/user'
 const expect = chai.expect
 chai.use(sinonChai)
@@ -39,5 +39,25 @@ describe('currentUser', () => {
     retrieveLoggedInUser()(req, res)
 
     expect(res.json).to.have.been.calledWith({ user: { id: 1, email: 'admin@juice-sh.op', lastLoginIp: '0.0.0.0', profileImage: '/assets/public/images/uploads/default.svg' } })
+  })
+
+  it('should select only public profile fields from a user with stored secrets', () => {
+    const data = {
+      id: 7,
+      email: 'profile@example.com',
+      password: 'stored-hash',
+      totpSecret: 'nonempty-secret',
+      deluxeToken: 'private-token',
+      dataValues: { password: 'stored-hash', totpSecret: 'nonempty-secret' },
+      _previousDataValues: { password: 'stored-hash' }
+    }
+    const token = authorize({ data })
+    req.cookies.token = token
+    req.query.fields = 'id,email,password,totpSecret,deluxeToken,dataValues,_previousDataValues'
+    authenticatedUsers.put(token, { data: data as unknown as UserModel })
+
+    retrieveLoggedInUser()(req, res)
+
+    expect(res.json).to.have.been.calledWith({ user: { id: 7, email: 'profile@example.com' } })
   })
 })
