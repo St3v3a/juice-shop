@@ -931,7 +931,9 @@
 		"removed": []
 	},
 	"registerAdminChallenge_1.ts": {
-		"added": [],
+		"added": [
+			32
+		],
 		"removed": []
 	},
 	"registerAdminChallenge_2.ts": {
@@ -940,9 +942,10 @@
 			28,
 			29,
 			30,
-			33,
+			32,
 			34,
-			35
+			35,
+			36
 		],
 		"removed": [
 			28
@@ -954,7 +957,8 @@
 	},
 	"registerAdminChallenge_4.ts": {
 		"added": [
-			5
+			5,
+			32
 		],
 		"removed": [
 			5

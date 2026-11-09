@@ -8,18 +8,24 @@ import assert from 'node:assert/strict'
 import request from 'supertest'
 import type { Express } from 'express'
 import { createTestApp } from './helpers/setup'
-import { login } from './helpers/auth'
+import { login, register } from './helpers/auth'
 import { challenges } from '../../data/datacache'
+import { UserModel } from '../../models/user'
 import * as security from '../../lib/insecurity'
 import * as utils from '../../lib/utils'
 
 let app: Express
 let authHeader: Record<string, string>
+let customerHeader: Record<string, string>
 
 before(async () => {
   const result = await createTestApp()
   app = result.app
-  authHeader = { Authorization: `Bearer ${security.authorize()}`, 'content-type': 'application/json' }
+  const admin = await login(app, { email: 'admin@juice-sh.op', password: 'admin123' })
+  authHeader = { Authorization: `Bearer ${admin.token}`, 'content-type': 'application/json' }
+  await register(app, { email: 'user-access@example.com', password: 'user-access-pass' })
+  const customer = await login(app, { email: 'user-access@example.com', password: 'user-access-pass' })
+  customerHeader = { Authorization: `Bearer ${customer.token}`, 'content-type': 'application/json' }
 }, { timeout: 60000 })
 
 const jsonHeader = { 'content-type': 'application/json' }
@@ -33,6 +39,26 @@ void describe('/api/Users', () => {
   void it('GET all users', async () => {
     const res = await request(app).get('/api/Users').set(authHeader)
     assert.equal(res.status, 200)
+  })
+
+  void it('GET all users is forbidden for a customer', async () => {
+    const res = await request(app).get('/api/Users').set(customerHeader)
+    assert.equal(res.status, 403)
+  })
+
+  void it('GET authentication details is forbidden for a customer', async () => {
+    const res = await request(app).get('/rest/user/authentication-details').set(customerHeader)
+    assert.equal(res.status, 403)
+  })
+
+  void it('GET authentication details remains available for an admin', async () => {
+    const res = await request(app).get('/rest/user/authentication-details').set(authHeader)
+    assert.equal(res.status, 200)
+  })
+
+  void it('GET all users rejects a signed token without a login session', async () => {
+    const res = await request(app).get('/api/Users').set({ Authorization: `Bearer ${security.authorize()}` })
+    assert.equal(res.status, 403)
   })
 
   void it('GET all users doesnt include passwords', async () => {
@@ -59,7 +85,7 @@ void describe('/api/Users', () => {
     assert.equal(res.body.data.password, undefined)
   })
 
-  void it('POST new admin', async () => {
+  void it('POST cannot register a new admin', async () => {
     const res = await request(app)
       .post('/api/Users')
       .set(jsonHeader)
@@ -74,7 +100,10 @@ void describe('/api/Users', () => {
     assert.equal(typeof res.body.data.createdAt, 'string')
     assert.equal(typeof res.body.data.updatedAt, 'string')
     assert.equal(res.body.data.password, undefined)
-    assert.equal(res.body.data.role, 'admin')
+    assert.equal(res.body.data.role, security.roles.customer)
+    const account = await UserModel.findByPk(res.body.data.id)
+    assert.equal(account?.role, security.roles.customer)
+    assert.equal(challenges.registerAdminChallenge.solved, false)
   })
 
   void it('POST new blank user', async () => {
@@ -127,7 +156,7 @@ void describe('/api/Users', () => {
     assert.equal(res.body.data.password, undefined)
   })
 
-  void it('POST new deluxe user', async () => {
+  void it('POST cannot register a deluxe user', async () => {
     const res = await request(app)
       .post('/api/Users')
       .set(jsonHeader)
@@ -142,10 +171,10 @@ void describe('/api/Users', () => {
     assert.equal(typeof res.body.data.createdAt, 'string')
     assert.equal(typeof res.body.data.updatedAt, 'string')
     assert.equal(res.body.data.password, undefined)
-    assert.equal(res.body.data.role, 'deluxe')
+    assert.equal(res.body.data.role, security.roles.customer)
   })
 
-  void it('POST new accounting user', async () => {
+  void it('POST cannot register an accounting user', async () => {
     const res = await request(app)
       .post('/api/Users')
       .set(jsonHeader)
@@ -160,10 +189,10 @@ void describe('/api/Users', () => {
     assert.equal(typeof res.body.data.createdAt, 'string')
     assert.equal(typeof res.body.data.updatedAt, 'string')
     assert.equal(res.body.data.password, undefined)
-    assert.equal(res.body.data.role, 'accounting')
+    assert.equal(res.body.data.role, security.roles.customer)
   })
 
-  void it('POST user not belonging to customer, deluxe, accounting, admin is forbidden', async () => {
+  void it('POST ignores an unrecognized role while creating a customer', async () => {
     const res = await request(app)
       .post('/api/Users')
       .set(jsonHeader)
@@ -172,11 +201,9 @@ void describe('/api/Users', () => {
         password: 'hooooorst',
         role: 'accountinguser'
       })
-    assert.equal(res.status, 400)
+    assert.equal(res.status, 201)
     assert.ok(res.headers['content-type']?.includes('application/json'))
-    assert.equal(res.body.message, 'Validation error: Validation isIn on role failed')
-    assert.equal(res.body.errors[0].field, 'role')
-    assert.equal(res.body.errors[0].message, 'Validation isIn on role failed')
+    assert.equal(res.body.data.role, security.roles.customer)
   })
 
   if (utils.isChallengeEnabled(challenges.persistedXssUserChallenge)) {
@@ -217,6 +244,19 @@ void describe('/api/Users/:id', () => {
   void it('GET existing user by id', async () => {
     const res = await request(app).get('/api/Users/1').set(authHeader)
     assert.equal(res.status, 200)
+  })
+
+  void it('GET another user by id is forbidden for a customer', async () => {
+    const res = await request(app).get('/api/Users/1').set(customerHeader)
+    assert.equal(res.status, 403)
+  })
+
+  void it('GET own user by id remains available for a customer', async () => {
+    const account = await UserModel.findOne({ where: { email: 'user-access@example.com' } })
+    assert.ok(account)
+    const res = await request(app).get(`/api/Users/${account.id}`).set(customerHeader)
+    assert.equal(res.status, 200)
+    assert.equal(res.body.data.id, account.id)
   })
 
   void it('PUT update existing user is forbidden via API even when authenticated', async () => {
